@@ -156,6 +156,6 @@ Violations can be reported to the project maintainers.
 ## ❓ Questions?
 
 - Open an **issue** for project-related questions.
-- For GSSoC-specific questions, join our Discord community: [Discord-Link](#)
+- For GSSoC/NSoC-specific questions, join our Discord community: [Discord-Link](#)
 
 Thank you for contributing! 📚🏫
