@@ -1144,10 +1144,12 @@ body {
 
 .summary-box {
   margin-top: 16px;
-  padding: 14px;
+  padding: 12px;
   background: linear-gradient(135deg, #eef2ff, #f8fafc);
   border-radius: 12px;
-  font-size: 14px;
+  font-size: 12px;
+  color: black;
+  margin-bottom: 16px;
   line-height: 1.6;
   border: 1px solid #e5e7eb;
 }
@@ -1340,7 +1342,7 @@ body.compact-view .task-item {
   padding: 8px 10px;
   margin-bottom: 4px;
 }
-body.compact-view .nav-item {
+body.compact-view .sitem {
   padding: 8px 10px;
   font-size: 13px;
 }

@@ -92,6 +92,7 @@ const newSubjectCancel = document.getElementById('new-subject-cancel');
 const newSubjectSave = document.getElementById('new-subject-save');
 const addSubjectBtn = document.getElementById('add-subject-btn');
 
+
 function syncNewSubjectColorSwatches() {
   if (!newSubjectColorsEl) return;
   newSubjectColorsEl.querySelectorAll('.subject-color-swatch').forEach(btn => {
@@ -1070,3 +1071,108 @@ addItemsBtn.addEventListener('click', () => {
 downloadBtn.addEventListener('click', () => {
   downloadData();
 });
+
+
+
+//Week Button
+const weekBtn = document.querySelector('.btn');
+
+weekBtn.addEventListener('click', () => {
+  const now = new Date();
+  const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  const weekFlow = [
+    { day: 'Monday', icon: '📘' },
+    { day: 'Tuesday', icon: '📗' },
+    { day: 'Wednesday', icon: '📙' },
+    { day: 'Thursday', icon: '📕' },
+    { day: 'Friday', icon: '📒' },
+    { day: 'Saturday', icon: '📓' },
+    { day: 'Sunday', icon: '📔' },
+  ];
+
+  const upcomingTask = store.tasks
+    .filter(t => !t.archived && t.status !== 'Done' && t.due_at)
+    .map(t => ({ ...t, dueDate: new Date(t.due_at) }))
+    .filter(t => t.dueDate >= now && t.dueDate <= nextWeek)
+    .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime())[0];
+
+  if (upcomingTask) {
+    const dayName = upcomingTask.dueDate.toLocaleDateString('en-US', {
+      weekday: 'long'
+    });
+
+    const flowItem = weekFlow.find(w => w.day === dayName);
+
+    alert(
+      `Upcoming task: "${upcomingTask.title}" is due on ${dayName} ${flowItem?.icon || ''}`
+    );
+  } else {
+    alert('No tasks due in the next week!');
+  }
+});
+
+//Task
+const taskModel = document.getElementById('tasks-modal');
+const closeBtn = document.getElementById('tasks-close');
+const taskList = document.getElementById('tasks-list');
+const navTasks = document.getElementById('nav-tasks');
+
+navTasks.addEventListener('click', (e) => {
+  e.preventDefault();
+  openTasksModal();
+});
+
+function openTasksModal() {
+  if (!taskModel || !taskList) return;
+
+  taskModel.style.display = 'flex';
+
+  taskList.innerHTML = store.tasks.map(task => `
+    <div class="task-item" onclick='openTaskModel(${JSON.stringify(task)})'>
+      <h4>${task.title}</h4>
+      <p>${task.due_at }</p>
+      <p>${task.status }</p>
+    </div>
+  `).join('');
+}
+
+function openTaskModel(task) {
+  if (!taskModel || !taskList || !task) return;
+
+  taskModel.style.display = 'flex';
+
+  taskList.innerHTML = `
+    <div class="task-detail">
+      <h3>${task.title || "Untitled"}</h3>
+
+      <p><b>Due Date:</b> ${task.due_at }</p>
+
+      <p><b>Status:</b> ${task.status }</p>
+
+      <p><b>Due Soon:</b> ${task.dueSoon }</p>
+
+      <p><b>Timer:</b> ${task.startTimer }</p>
+
+      <button onclick="openTasksModal()" style="margin-top:10px; background: var(--color-background-secondary); color: var(--color-text-primary); 
+      border: 1px solid var(--color-border-secondary); padding: 6px 12px; border-radius: 4px;">
+        ← Back to All Tasks
+      </button>
+    </div>
+  `;
+}
+
+
+if (closeBtn && taskModel) {
+  closeBtn.addEventListener('click', () => {
+    taskModel.style.display = 'none';
+  });
+}
+
+window.addEventListener('click', (e) => {
+  if (e.target === taskModel) {
+    taskModel.style.display = 'none';
+  }
+});
+window.openTaskModel = openTaskModel;
+window.openTasksModal = openTasksModal;
