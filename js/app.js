@@ -5,6 +5,28 @@ import { analyzeWorkload } from './utils/scheduler.js';
 
 initGlobalErrorBoundary();
 
+function getLabelColor(labelStr) {
+  const colors = ['#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#10b981', '#ec4899', '#14b8a6', '#f97316'];
+  let hash = 0;
+  for (let i = 0; i < labelStr.length; i++) {
+    hash = labelStr.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return colors[Math.abs(hash) % colors.length];
+}
+
+function extractLabels(title) {
+  const labelRegex = /#([\w-]+)/g;
+  let match;
+  const labels = [];
+  while ((match = labelRegex.exec(title)) !== null) {
+    labels.push(match[1]);
+  }
+  const cleanTitle = title.replace(labelRegex, '').trim();
+  return { cleanTitle, labels };
+}
+
+let activeLabelFilter = '';
+
 function generateSummary(tasks, subjects) {
   const now = new Date();
   const weekEnd = new Date();
@@ -64,8 +86,14 @@ const clearBtn = document.getElementById('clear-btn');
 const addItemsBtn = document.getElementById('add-btn');
 const downloadBtn = document.getElementById('download-btn');
 const newTaskBtn = document.getElementById('add-task-btn');
+const labelFilterSelect = document.getElementById('label-filter');
 
-
+if (labelFilterSelect) {
+  labelFilterSelect.addEventListener('change', (e) => {
+    activeLabelFilter = e.target.value;
+    renderTasks();
+  });
+}
 
 const SUBJECT_COLORS = [
   'var(--color-text-info)',
@@ -404,7 +432,29 @@ function renderTasks() {
     archivedBadge.textContent = archivedTasks.length;
   }
   
-  const displayTasks = currentView === 'archived' ? archivedTasks : activeTasks;
+  const displayTasksRaw = currentView === 'archived' ? archivedTasks : activeTasks;
+  const displayTasks = activeLabelFilter
+    ? displayTasksRaw.filter(t => t.labels && t.labels.includes(activeLabelFilter))
+    : displayTasksRaw;
+
+  // Extract unique labels to populate the filter dropdown
+  if (labelFilterSelect) {
+    const uniqueLabels = new Set();
+    store.tasks.forEach(t => {
+      if (t.labels && Array.isArray(t.labels)) {
+        t.labels.forEach(l => uniqueLabels.add(l));
+      }
+    });
+    
+    // Store current selection to restore it
+    const currentSel = labelFilterSelect.value;
+    let optionsHtml = '<option value="">All Labels</option>';
+    Array.from(uniqueLabels).sort().forEach(lbl => {
+      optionsHtml += `<option value="${lbl}" ${lbl === currentSel ? 'selected' : ''}>${lbl}</option>`;
+    });
+    labelFilterSelect.innerHTML = optionsHtml;
+  }
+
   const sorted = [...displayTasks].sort((a,b) => new Date(a.due_at) - new Date(b.due_at));
   
   const now = new Date(); 
@@ -486,7 +536,7 @@ function renderTasks() {
             </select>
 
             <label style="display:block; font-size:10px; font-weight:700; color:var(--color-text-tertiary); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:4px;">Task Name</label>
-            <input class="board-edit-title edit-field" type="text" value="${t.title}" style="width:100%; margin-bottom: 12px; font-size:13px; font-weight:600; padding:6px; border: 1px solid var(--color-border-secondary); border-radius: 4px; background: var(--color-background-primary); color: var(--color-text-primary);">
+            <input class="board-edit-title edit-field" type="text" value="${t.title}${t.labels && t.labels.length > 0 ? ' #' + t.labels.join(' #') : ''}" style="width:100%; margin-bottom: 12px; font-size:13px; font-weight:600; padding:6px; border: 1px solid var(--color-border-secondary); border-radius: 4px; background: var(--color-background-primary); color: var(--color-text-primary);">
 
             <label style="display:block; font-size:10px; font-weight:700; color:var(--color-text-tertiary); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:4px;">Deadline</label>
             <input class="board-edit-date edit-field" type="datetime-local" value="${localDate}" style="width:100%; margin-bottom: 12px; font-size:12px; padding:6px; border: 1px solid var(--color-border-secondary); border-radius: 4px; background: var(--color-background-primary); color: var(--color-text-primary);">
@@ -515,6 +565,11 @@ function renderTasks() {
              <button class="task-btn task-btn-info restore-task-btn" data-id="${t.id}" title="Restore">Restore</button>
              <button class="task-btn task-btn-danger delete-task-btn" data-id="${t.id}" title="Delete">Delete</button>`;
 
+        let labelsHtml = '';
+        if (t.labels && Array.isArray(t.labels)) {
+          labelsHtml = t.labels.map(l => `<span class="task-pill" style="background:${getLabelColor(l)}; color:white;">${l}</span>`).join(' ');
+        }
+
         html += `
           <div class="task-item ${isUrgent ? 'urgent' : ''} ${isHighPriority ? 'high-priority' : ''} ${isOverdue ? 'overdue' : ''} ${isDone ? 'done' : ''}" data-id="${t.id}">
             <div class="task-check ${isDone ? 'done' : ''}"></div>
@@ -523,6 +578,7 @@ function renderTasks() {
               <div class="task-meta">
                 <span class="task-pill ${isDone ? 'pill-green' : (isOverdue || isHighPriority ? 'pill-red' : 'pill-amber')}">${isDone ? 'Done' : 'Due ' + formatDate(t.due_at)}</span>
                 <span class="task-pill ${pillClass}">${sub.short_code}</span>
+                ${labelsHtml}
               </div>
             </div>
             <div class="task-actions">
@@ -544,7 +600,15 @@ function renderTasks() {
          </div>`;
 
     const emptyState = dueSoon.length === 0 && completed.length === 0
-      ? `<div class="tasks-empty-state">No tasks for this day yet.</div>`
+      ? `<div class="tasks-empty-state">
+           <div class="empty-state-icon">📅</div>
+           <div class="empty-state-title">No tasks for today</div>
+           <div class="empty-state-text">Your schedule is looking clear! Use this time to rest or start planning ahead.</div>
+           <button class="empty-state-cta" id="empty-state-add-btn">
+             <svg width="14" height="14" fill="none"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+             Add your first task
+           </button>
+         </div>`
       : '';
 
     tasksSection.innerHTML = actionBar +
@@ -557,10 +621,23 @@ function renderTasks() {
          </div>`;
 
     const titlePrefix = currentView === 'archived' ? 'Archived: ' : '';
-    const emptyStateText = currentView === 'archived' ? 'No archived tasks.' : 'No tasks yet. Add tasks from Smart Paste to get started.';
+    const emptyStateTitle = currentView === 'archived' ? 'No archived tasks' : 'Start your journey';
+    const emptyStateText = currentView === 'archived' 
+      ? 'Your archive is empty. Completed tasks you archive will appear here.' 
+      : 'No tasks yet! Start planning your study schedule and stay on top of your goals.';
+    const emptyStateIcon = currentView === 'archived' ? '📦' : '✨';
 
     const emptyState = dueSoon.length === 0 && thisWeek.length === 0 && completed.length === 0
-      ? `<div class="tasks-empty-state">${emptyStateText}</div>`
+      ? `<div class="tasks-empty-state">
+           <div class="empty-state-icon">${emptyStateIcon}</div>
+           <div class="empty-state-title">${emptyStateTitle}</div>
+           <div class="empty-state-text">${emptyStateText}</div>
+           ${currentView !== 'archived' ? `
+           <button class="empty-state-cta" id="empty-state-add-btn">
+             <svg width="14" height="14" fill="none"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+             Add your first task
+           </button>` : ''}
+         </div>`
       : '';
 
     tasksSection.innerHTML = actionBar +
@@ -568,6 +645,14 @@ function renderTasks() {
                              renderGroup(titlePrefix + 'This week', thisWeek, 'var(--color-text-secondary)', true) +
                              renderGroup(titlePrefix + 'Completed', completed, 'var(--color-text-tertiary)') +
                              emptyState;
+  }
+
+  // Bind CTA button in empty state
+  const emptyStateAddBtn = document.getElementById('empty-state-add-btn');
+  if (emptyStateAddBtn) {
+    emptyStateAddBtn.addEventListener('click', () => {
+      document.getElementById('add-task-btn')?.click();
+    });
   }
                            
   document.querySelectorAll('.task-item').forEach(el => {
@@ -602,18 +687,21 @@ function renderTasks() {
       const taskId = el.dataset.id;
       const itemEl = el.closest('.task-item');
       
-      const title = itemEl.querySelector('.board-edit-title').value;
+      const rawTitle = itemEl.querySelector('.board-edit-title').value;
       const subject_id = itemEl.querySelector('.board-edit-subject').value;
       let dateVal = itemEl.querySelector('.board-edit-date').value;
       const notes = itemEl.querySelector('.board-edit-notes').value;
       const priority = itemEl.querySelector('.board-edit-priority').value;
       
+      const { cleanTitle, labels } = extractLabels(rawTitle);
+      
       store.updateTask(taskId, {
-        title,
+        title: cleanTitle || rawTitle,
         subject_id,
         due_at: dateVal ? new Date(dateVal).toISOString() : '',
         notes,
-        priority
+        priority,
+        labels
       });
     });
   });
@@ -1012,26 +1100,28 @@ newTaskModal.addEventListener('click', (e) => {
 });
 
 newTaskSave.addEventListener('click', async () => {
-  const title = newTaskTitle.value.trim();
+  const rawTitle = newTaskTitle.value.trim();
   const subject_id = newTaskSubject.value;
   const notes = newTaskNotes.value.trim();
   const dateVal = newTaskDate.value;
 
-  if (!title) {
+  if (!rawTitle) {
     alert('Please enter a task name');
     return;
   }
 
+  const { cleanTitle, labels } = extractLabels(rawTitle);
   const due_at = dateVal ? new Date(dateVal).toISOString() : '';
 
   const newTask = {
-    title,
+    title: cleanTitle || rawTitle,
     subject_id,
     due_at,
     notes,
     priority: 'medium',
     status: 'Not Started',
-    archived: 0
+    archived: 0,
+    labels
   };
 
   await store.addTasks([newTask]);
@@ -1040,7 +1130,11 @@ newTaskSave.addEventListener('click', async () => {
 
 addItemsBtn.addEventListener('click', () => {
   if (store.currentPaste) {
-    store.addTasks(store.currentPaste);
+    const pasteWithLabels = store.currentPaste.map(t => {
+      const { cleanTitle, labels } = extractLabels(t.title);
+      return { ...t, title: cleanTitle || t.title, labels };
+    });
+    store.addTasks(pasteWithLabels);
     store.clearExtracted();
     pasteInput.value = '';
   }
@@ -1065,14 +1159,6 @@ extractBtn.addEventListener('click', async () => {
 clearBtn.addEventListener('click', () => {
   pasteInput.value = '';
   store.clearExtracted();
-});
-
-addItemsBtn.addEventListener('click', () => {
-  if (store.currentPaste) {
-    store.addTasks(store.currentPaste);
-    store.clearExtracted();
-    pasteInput.value = '';
-  }
 });
 
 downloadBtn.addEventListener('click', () => {
