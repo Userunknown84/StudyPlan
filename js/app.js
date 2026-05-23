@@ -1176,6 +1176,11 @@ addItemsBtn.addEventListener('click', () => {
 });
 });
 
+// Ensures the button is hidden on initial page load if the textarea is empty
+if (pasteInput.value.trim() === "") {
+    clearBtn.style.display = 'none';
+}
+
 extractBtn.addEventListener('click', async () => {
   const text = pasteInput.value;
   if (!text.trim()) return;
@@ -1191,9 +1196,21 @@ extractBtn.addEventListener('click', async () => {
   store.setExtracted(items);
 });
 
+// Wipes the text, clears the store, hides the button, and refocuses the cursor
 clearBtn.addEventListener('click', () => {
-  pasteInput.value = '';
-  store.clearExtracted();
+    pasteInput.value = '';
+    store.clearExtracted();
+    clearBtn.style.display = 'none'; // Hides the clear button instantly
+    pasteInput.focus();              // Puts the typing cursor back in the box
+});
+
+// Listens to typing/pasting to show or hide the button dynamically
+pasteInput.addEventListener('input', () => {
+    if (pasteInput.value.trim().length > 0) {
+        clearBtn.style.display = 'block'; 
+    } else {
+        clearBtn.style.display = 'none';
+    }
 });
 
 downloadBtn.addEventListener('click', () => {
