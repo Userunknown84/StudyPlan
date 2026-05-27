@@ -2,6 +2,7 @@ import { store } from './store.js';
 import { extractTasksFromText } from './utils/api.js';
 import { initGlobalErrorBoundary } from './utils/errorBoundary.js';
 import { analyzeWorkload } from './utils/scheduler.js';
+import { Toast } from './utils/toast.js';
 
 initGlobalErrorBoundary();
 
@@ -221,6 +222,56 @@ function setCircleDasharray() {
   timerPathRemaining.setAttribute("stroke-dasharray", circleDasharray);
 }
 
+function getTimerColor(timeLeft, totalTime) {
+  const fraction = timeLeft / totalTime;
+  if (fraction <= 0.1) return '#ef4444';
+  if (fraction <= 0.3) return '#f59e0b';
+  return '#166534';
+}
+
+function updateTimerColor() {
+  const color = getTimerColor(timeLeft, TIME_LIMIT);
+  timerPathRemaining.style.stroke = color;
+}
+
+function playCompletionSound() {
+  try {
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(400, audioContext.currentTime + 0.3);
+    
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.5);
+  } catch (e) {
+    console.log('Audio not supported');
+  }
+}
+
+function requestNotificationPermission() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+}
+
+function showBrowserNotification() {
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification('Focus Session Complete!', {
+      body: 'Great job! You completed your focus session.',
+      icon: '/logo.png'
+    });
+  }
+}
+
 function startTimer() {
   if (timerInterval) return;
   TIME_LIMIT = getTimerDuration();
@@ -228,17 +279,21 @@ function startTimer() {
   timerDurationInput.disabled = true;
   timerStartBtn.classList.add('hidden');
   timerPauseBtn.classList.remove('hidden');
+  requestNotificationPermission();
   
   timerInterval = setInterval(() => {
     timePassed += 1;
     timeLeft = TIME_LIMIT - timePassed;
     timerText.innerHTML = formatTimeLeft(timeLeft);
     setCircleDasharray();
+    updateTimerColor();
 
     if (timeLeft === 0) {
       clearInterval(timerInterval);
       timerInterval = null;
-      alert('Focus session complete!');
+      playCompletionSound();
+      showBrowserNotification();
+      Toast.show('Focus session complete!', 'success');
       resetTimer();
     }
   }, 1000);
@@ -260,6 +315,7 @@ function resetTimer() {
   timerDurationInput.disabled = false;
   timerText.innerHTML = formatTimeLeft(timeLeft);
   timerPathRemaining.setAttribute("stroke-dasharray", "283 283");
+  timerPathRemaining.style.stroke = 'var(--color-text-primary)';
   timerPauseBtn.classList.add('hidden');
   timerStartBtn.classList.remove('hidden');
 }
@@ -410,7 +466,7 @@ async function downloadData() {
 
     } catch (error) {
         console.error(error);
-        alert('Failed to download data');
+        Toast.show('Failed to download data', 'error');
     }
 }
 
@@ -1092,7 +1148,7 @@ document.addEventListener('DOMContentLoaded', () => {
 newTaskBtn.addEventListener('click', () => {
   
   if (!store.subjects || store.subjects.length === 0) {
-    alert('Subjects are still loading. Please try again in a moment.');
+    Toast.show('Subjects are still loading. Please try again in a moment.', 'warning');
     return;
   }
 
@@ -1176,6 +1232,11 @@ addItemsBtn.addEventListener('click', () => {
 });
 });
 
+// Ensures the button is hidden on initial page load if the textarea is empty
+if (pasteInput.value.trim() === "") {
+    clearBtn.style.display = 'none';
+}
+
 extractBtn.addEventListener('click', async () => {
   const text = pasteInput.value;
   if (!text.trim()) return;
@@ -1191,9 +1252,21 @@ extractBtn.addEventListener('click', async () => {
   store.setExtracted(items);
 });
 
+// Wipes the text, clears the store, hides the button, and refocuses the cursor
 clearBtn.addEventListener('click', () => {
-  pasteInput.value = '';
-  store.clearExtracted();
+    pasteInput.value = '';
+    store.clearExtracted();
+    clearBtn.style.display = 'none'; // Hides the clear button instantly
+    pasteInput.focus();              // Puts the typing cursor back in the box
+});
+
+// Listens to typing/pasting to show or hide the button dynamically
+pasteInput.addEventListener('input', () => {
+    if (pasteInput.value.trim().length > 0) {
+        clearBtn.style.display = 'block'; 
+    } else {
+        clearBtn.style.display = 'none';
+    }
 });
 
 downloadBtn.addEventListener('click', () => {
